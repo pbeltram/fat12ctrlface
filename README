@@ -6,7 +6,7 @@ TODO: Fill topics below.
 
 - Introduction
 - Descripton of project
-- Used environmnet (HW, develpment tools): Olimex LPC2148, OOJEW JTAG probe, Openocd, codesourcery lite
+- Used environmnet (HW, develpment tools): Olimex LPC2148, OOJEW JTAG probe, Openocd, codesourcery lite (http://www.codesourcery.com/sgpp/lite/arm/portal/release1293)
 - Building: Eclipse
 - Debugging : Eclipse Zylin Embedded debug Native
 - Running: Non-buffered file IO. catnb, echonb command line utils.
