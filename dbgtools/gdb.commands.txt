@@ -1,0 +1,14 @@
+'Initialize' commands:
+target remote localhost:3333
+
+'Run' commands:
+monitor reset halt
+monitor sleep 500
+monitor poll
+monitor wait_halt
+monitor arm7_9 dbgrq enable
+monitor mdb 0xE01FC040
+monitor target_request debugmsgs enable
+monitor trace point 1
+set remote hardware-watchpoint-limit 2
+

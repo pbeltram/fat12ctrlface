@@ -1,10 +1,13 @@
 #
 # $Id$
+#
 
 TODO: Fill topics below.
 
+- Introduction
 - Descripton of project
-- Used environmnet (HW, develpment tools)
-- Building
-- Debugging and Runing
+- Used environmnet (HW, develpment tools): Olimex LPC2148, OOJEW JTAG probe, Openocd, codesourcery lite
+- Building: Eclipse
+- Debugging : Eclipse Zylin Embedded debug Native
+- Running: Non-buffered file IO. catnb, echonb command line utils.
 
