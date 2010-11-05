@@ -1,0 +1,76 @@
+#
+# $Id$
+#
+
+# NOTE: SRC_TOP must be defined in target project makefile.
+
+VERSION_DIR=$(SRC_TOP)/version
+VERSION_SRC=$(VERSION_DIR)/version.c
+# The version object file is always created in the executable's current directory
+VERSION_OBJ=version.o
+VER_BUILDUSER=$(LOGNAME)
+RELEASE_BUILD_USER=build
+# Version in the form of 1.0.5 (major, minor, build number)
+# Updated build number committed after successful build by the master Makefile
+# for official builds (created by user "build").
+# The same file is used for sw packaging
+VERSION_TXT=$(VERSION_DIR)/version.txt
+BUILD_LABEL_TXT=$(VERSION_DIR)/label.txt
+
+# Optimisation: If the version definition was already defined by the Makefile
+# on upper level just use that.
+ifndef VERSIONDEF
+
+	# Build environment info
+	VER_COMPILERINFO=$(shell $(COMPILE.cpp) -v 2>&1 | grep "gcc version")
+	VER_BUILDMACHINE=$(shell uname -a)
+	VER_BUILDTIME=$(shell date '+%Y/%m/%d %T')
+
+	VER_MAJOR=$(shell cat $(VERSION_TXT) | cut -d . -f 1 )
+	VER_MINOR=$(shell cat $(VERSION_TXT) | cut -d . -f 2 )
+	VER_BUILD?=$(shell cat $(VERSION_TXT) | cut -d . -f 3 )
+
+	# Additional label. e.g. development/alpha/beta...
+	# Taken from the file for official builds, hardcoded
+	# for other.
+	ifeq ($(VER_BUILDUSER),$(RELEASE_BUILD_USER))
+		VER_LABEL=$(shell cat $(BUILD_LABEL_TXT) )
+		override RELEASE_BUILD=1
+	else
+		override VER_LABEL=devbuild
+	endif
+	export RELEASE_BUILD 
+
+	# Subversion revision from $(SRC_TOP)
+	# NOTE: Build depends on subversion  
+	REVISION?=$(shell svn info $(SRC_TOP) | grep Revision: | cut -d " " -f 2)
+
+	# Unable to get svn revision: use default
+	ifeq ($(REVISION),)
+		REVISION=9999
+	endif
+
+	ifeq ($(VER_BUILD),)
+		VER_BUILD=9999
+	endif
+
+	VERSIONSTR=$(VER_MAJOR).$(VER_MINOR).$(VER_BUILD)-r$(REVISION) $(VER_LABEL)
+	export VERSIONSTR
+
+	VERSIONDEF= \
+		-DVER_MAJOR="$(VER_MAJOR)" -DVER_MINOR="$(VER_MINOR)" \
+		-DVER_BUILD="$(VER_BUILD)" -DVER_LABEL='"$(VER_LABEL)"' -DREVISION="$(REVISION)" \
+		-DVER_COMPILERINFO='"$(VER_COMPILERINFO)"' -DVER_BUILDMACHINE='"$(VER_BUILDMACHINE)"' \
+		-DVER_BUILDTIME='"$(VER_BUILDTIME)"' -DVER_BUILDUSER='"$(VER_BUILDUSER)"'
+
+	export VERSIONDEF
+	export VER_LABEL
+	ifeq ($(strip $(VER_LABEL)),)
+		VER_DPKG:=$(VER_MAJOR).$(VER_MINOR)-$(VER_BUILD)+r$(REVISION)
+	else
+		VER_DPKG:=$(VER_MAJOR).$(VER_MINOR)-$(VER_BUILD)~r$(REVISION)+$(VER_LABEL)
+	endif
+
+	export VER_DPKG
+endif
+

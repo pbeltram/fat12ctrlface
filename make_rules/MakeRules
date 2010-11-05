@@ -1,0 +1,157 @@
+#
+# $Id$
+#
+
+include $(SRC_TOP)/make_rules/MakeVersion
+
+# ------------------------------------------------------------------------------
+# Targets
+# ------------------------------------------------------------------------------
+
+.PHONY: all clean flash rmout
+
+all:
+
+clean: rmout
+	@echo "==> Cleaning"
+	@-$(RM) $(TARGET_NAME) $(ARCHIVE_LIB) $(GENERATED_CODE) \
+	$(SHLIB) $(SHLIB_O) $(EXECUTABLE) $(EXECUTABLE_O) $(DEP_PREFIX)* \
+	$(VERSION_OBJ)
+
+rmout:
+	@echo "==> Clean ARM"
+	@-$(RM) $(TARGET_NAME).map $(TARGET_NAME).bin $(TARGET_NAME).hex
+
+flash: $(TARGET_NAME)
+	@echo "==> Flashing"
+	@$(OPENOCD) -f $(FLASH_CFG)_configuration.cfg -f $(FLASH_CFG)_commands.cmd \
+	-c "flash write_image "$(TARGET_NAME)" 0x0 elf" \
+	-c "verify_image "$(TARGET_NAME)" 0x0 elf" \
+	-c "shutdown"
+	
+# ------------------------------------------------------------------------------
+# Definitions
+# ------------------------------------------------------------------------------
+
+CC=$(TOOLSROOT)/bin/$(TOOLS)-gcc
+AS=$(TOOLSROOT)/bin/$(TOOLS)-as
+CPP=$(TOOLSROOT)/bin/$(TOOLS)-g++
+LD=$(TOOLSROOT)/bin/$(TOOLS)-ld
+OBJCOPY=$(TOOLSROOT)/bin/$(TOOLS)-objcopy
+OBJDUMP=$(TOOLSROOT)/bin/$(TOOLS)-objdump
+SIZE=$(TOOLSROOT)/bin/$(TOOLS)-size
+NM=$(TOOLSROOT)/bin/$(TOOLS)-nm
+AR=$(TOOLSROOT)/bin/$(TOOLS)-ar
+
+RELEASE_BUILD?=1
+
+TOOLSROOT?=/scratchbox/compilers/arm-2010q1-202
+TOOLS?=arm-none-linux-gnueabi
+OLIMEXTOOL?=OOJEW
+
+OPENOCD=/usr/bin/openocd
+OPENOCDPATH=$(SRC_TOP)/dbgtools
+FLASH_CFG=$(OPENOCDPATH)/$(OLIMEXTOOL)_$(ARMCPU)
+
+LDSCRIPT=$(SRC_TOP)/shared/$(ARMCPU)_gcc.ld
+
+# ------------------------------------------------------------------------------
+# Definitions
+# ------------------------------------------------------------------------------
+
+ARLIBEXT=a
+
+LDLIBS+=
+LIB_DIRS?=$(TOOLSROOT)/$(TOOLS)/libc/armv4t/usr/lib $(TOOLSROOT)/lib/gcc/$(TOOLS)/4.4.1/armv4t
+LIB_FLAGS=$(patsubst %,-L%,$(LIB_DIRS))
+
+CMN_INCLUDE+=$(abspath $(SRC_TOP)/FreeRTOS/Source/include)
+CMN_INCLUDE+=$(abspath $(SRC_TOP)/FreeRTOS)
+
+INCLUDE_DIRS+=$(CMN_INCLUDE)
+INCLUDE_FLAGS=$(patsubst %,-I%,$(INCLUDE_DIRS))
+DEFINE_FLAGS=$(addprefix -D, $(DEFINES))
+
+override CPUFLAGS+=-mcpu=arm7tdmi-s
+
+# Override whatever flags are specified from the environment.
+
+override ASFLAGS=--traditional-format -march=armv4t -EL
+override CFLAGS=-Wall -Wcast-align -Wcast-qual -Wimplicit -Wmissing-declarations \
+    -Wmissing-prototypes -Wnested-externs -Wpointer-arith -Wswitch \
+    -Wredundant-decls -Wreturn-type -Wshadow -Wstrict-prototypes -Wunused \
+    -msoft-float -fno-common -fno-exceptions -fno-non-call-exceptions \
+    -march=armv4t -mlittle-endian -fno-builtin -D$(ARMCPU) \
+    -nostartfiles -D GCC_ARM7
+override LDFLAGS=-static -Map $(TARGET_NAME).map --cref -T $(LDSCRIPT) -lm -lg -lc -lgcc
+
+ifeq ("$(RELEASE_BUILD)", "0")
+  OPTFLAGS+=
+  DEBUGFLAGS+=-g -DDEBUG=1
+  ASFLAGS +=--gstabs+ --warn
+else
+  OPTFLAGS+=
+  DEBUGFLAGS+=
+  ASFLAGS+=
+endif
+
+override CFLAGS+=$(INCLUDE_FLAGS) $(CPUFLAGS) $(OPTFLAGS) $(DEBUGFLAGS) $(DEFINE_FLAGS)
+
+ARCHIVE_LIB=$(TARGET_NAME)_$(ARMCPU).$(ARLIBEXT)
+ARCHIVE_LIB_O=$(patsubst %.o,$(ARCHIVE_LIB)(%.o),$(OBJECT_FILES))
+
+EXECUTABLE=$(TARGET_NAME)
+EXECUTABLE_O=$(OBJECT_FILES)
+
+# Including dependency files
+DEP_PREFIX=.dep.
+
+ifneq ($(MAKECMDGOALS),clean)
+	# Include dependency files only if there is any.
+	-include $(wildcard $(DEP_PREFIX)*)
+endif
+
+# ------------------------------------------------------------------------------
+# Rules
+# ------------------------------------------------------------------------------
+
+%.o: %.cpp
+	@echo "==> Compiling: " $<
+	@$(COMPILE.cpp) $(OUTPUT_OPTION) -MMD -MF $(DEP_PREFIX)$(notdir $@) $<
+
+%.o: %.cc
+	@echo "==> Compiling: " $<
+	@$(COMPILE.cpp) $(OUTPUT_OPTION) -MMD -MF $(DEP_PREFIX)$(notdir $@) $<
+
+%.o: %.c
+	@echo "==> Compiling: " $<
+	@$(COMPILE.c) $(OUTPUT_OPTION) -MMD -MF $(DEP_PREFIX)$(notdir $@) $<
+
+%.o: %.s
+	@echo "==> Assembling: " $<
+	@$(COMPILE.s) $(OUTPUT_OPTION) $<
+
+(%): %
+	@$(AR) $(ARFLAGS) $@ $<
+
+$(ARCHIVE_LIB): $(ARCHIVE_LIB_O)
+	@echo "==> Creating archive library $(@F) ..."
+
+# Binary executable
+$(EXECUTABLE): $(EXECUTABLE_O) $(LDLIBS)
+	@echo "==> Creating version info: $(VERSIONSTR)"
+	@$(COMPILE.c) $(VERSIONDEF) -MMD -MF $(DEP_PREFIX)$(notdir $(VERSION_OBJ)) -o $(VERSION_OBJ) $(VERSION_SRC)
+	@echo "==> Linking $(@F)"
+	@$(LD) $^ $(VERSION_OBJ) -o $@ $(LDFLAGS) $(LIB_FLAGS)
+
+# ARM FLASH-able binaries
+%.bin: %
+	@echo "==> FLASH binary (bin) $(@F)"
+	@$(SIZE) -A $^
+	@$(OBJCOPY) -Obinary $^ $@
+
+%.hex: %
+	@echo "==> FLASH binary (hex) $(@F)"
+	@$(SIZE) -A $^
+	@$(OBJCOPY) -Oihex $^ $@
+
