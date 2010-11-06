@@ -1,0 +1,131 @@
+#
+# $Id$
+#
+
+# ------------------------------------------------------------------------------
+# Targets
+# ------------------------------------------------------------------------------
+
+.PHONY: all clean install
+
+all:
+
+clean:
+	@echo "==> Cleaning"
+	@-$(RM) $(TARGET_NAME) $(ARCHIVE_LIB) $(GENERATED_CODE) \
+	$(SHLIB) $(SHLIB_O) $(EXECUTABLE) $(EXECUTABLE_O) $(DEP_PREFIX)*
+
+# ------------------------------------------------------------------------------
+# Definitions
+# ------------------------------------------------------------------------------
+
+SHLIBEXT=so
+ARLIBEXT=a
+
+LDLIBS+=-ldl
+INCLUDE_DIRS+=
+INCLUDE_FLAGS=$(patsubst %,-I%,$(INCLUDE_DIRS))
+
+#
+# Release vs development build. Development build is default.
+#
+RELEASE_BUILD ?= 0
+
+ifeq ("$(RELEASE_BUILD)", "0")
+	OPTFLAGS=-O0
+	DEBUGFLAGS=-g
+else
+	OPTFLAGS=-O3
+	DEBUGFLAGS=
+endif
+
+#
+# Floating point optimizations, SSE, processor tuning
+#
+CPUFLAGS=-mfpmath=sse -msse3 -march=native
+
+CPPFLAGS+=-D_REENTRANT -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE \
+    -Wall -pedantic -W -Wno-long-long -Wpacked \
+    -Wno-unused -Wunused-value -Wunused-label -Wunused-variable -Wunused-value \
+    -Wwrite-strings
+
+#CPPFLAGS+=
+
+
+# TODO: Change generation-only of dependency files (-MMD) to including the
+# generated rules.
+
+#
+# Additional warnings for cpp.
+#
+CXXFLAGS+= $(INCLUDE_FLAGS) $(CPUFLAGS) $(OPTFLAGS) $(DEBUGFLAGS) \
+    -pthread -Wcast-qual -Wcast-align -Wnon-virtual-dtor
+
+#CXXFLAGS+=
+
+CFLAGS+= $(INCLUDE_FLAGS) $(CPUFLAGS) $(OPTFLAGS) $(DEBUGFLAGS) \
+	-pthread -Wcast-qual -Wcast-align
+
+#CFLAGS+=
+
+#
+# -rdynamic is needed to be able to get stack information in run time.
+# See man 3 backtrace
+#
+LDFLAGS+=-rdynamic
+
+ARFLAGS=r
+
+ARCHIVE_LIB=$(TARGET_NAME).$(ARLIBEXT)
+ARCHIVE_LIB_O=$(patsubst %.o,$(ARCHIVE_LIB)(%.o),$(OBJECT_FILES))
+
+SHLIB=$(TARGET_NAME).$(SHLIBEXT)
+SHLIB_O=$(patsubst %.o,%.sh.o,$(OBJECT_FILES))
+
+EXECUTABLE    = $(TARGET_NAME)
+EXECUTABLE_O  = $(OBJECT_FILES)
+
+COMPILE.idl = omniidl
+COMPILE.idlcpp = $(COMPILE.idl) -bcxx -Wbh=.h -Wbs=.cc -Wbuse_quotes
+IDLFLAGS = -Wbexample -Wba
+
+# Including dependency files
+
+DEP_PREFIX=.dep.
+
+ifneq ($(MAKECMDGOALS),clean)
+	# Include dependency files only if there is any.
+	-include $(wildcard $(DEP_PREFIX)*)
+endif
+
+# ------------------------------------------------------------------------------
+# Rules
+# ------------------------------------------------------------------------------
+
+%.o: %.cpp
+	@echo "==> Compiling: " $<
+	@$(COMPILE.cpp) $(OUTPUT_OPTION) -MMD -MF $(DEP_PREFIX)$(notdir $@) $<
+
+%.o: %.cc
+	@echo "==> Compiling: " $<
+	@$(COMPILE.cpp) $(OUTPUT_OPTION) -MMD -MF $(DEP_PREFIX)$(notdir $@) $<
+
+%.o: %.c
+	@echo "==> Compiling: " $<
+	@$(COMPILE.c) $(OUTPUT_OPTION) -MMD -MF $(DEP_PREFIX)$(notdir $@) $<
+
+# IDL compiler
+i_%.cc i_%.h i_%DynSK.cc: i_%.idl
+	@echo "==> IDL --> C++: $<"
+	@$(COMPILE.idlcpp) $(IDLFLAGS) $<
+
+(%): %
+	@$(AR) $(ARFLAGS) $@ $<
+
+$(ARCHIVE_LIB): $(ARCHIVE_LIB_O)
+	@echo "==> Creating archive library $(@F) ..."
+
+# Binary executable
+$(EXECUTABLE): $(EXECUTABLE_O) $(LDLIBS)
+	@echo "==> Linking $(@F)"
+	@$(LINK.cpp) $^ -o $@
